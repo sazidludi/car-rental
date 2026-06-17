@@ -11,6 +11,8 @@ from driveshare.database import (
     get_booking_history,
     get_bookings_for_car,
     get_cars,
+    get_payments,
+    get_user_balance,
     has_booking_overlap,
     init_db,
     process_payment,
@@ -36,10 +38,6 @@ if "selected_booking_id" not in st.session_state:
     st.session_state["selected_booking_id"] = None
 if "payment_notice" not in st.session_state:
     st.session_state["payment_notice"] = ""
-if "renter_balance" not in st.session_state:
-    st.session_state["renter_balance"] = 1000.0
-if "owner_balance" not in st.session_state:
-    st.session_state["owner_balance"] = 0.0
 
 # sidebar
 pages = ["Home", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
@@ -57,6 +55,8 @@ st.caption("peer to peer car rental")
 # page data
 cars = get_cars()
 booking_history = get_booking_history()
+renter_balance = get_user_balance(2)
+owner_balance = get_user_balance(1)
 
 # home dashboard
 if st.session_state["page"] == "Home":
@@ -105,7 +105,7 @@ if st.session_state["page"] == "Search Cars":
         if car["daily_price"] > max_price:
             continue
 
-            # availability check
+        # availability check
         if len(trip_dates) == 2:
             trip_start = trip_dates[0]
             trip_end = trip_dates[1]
@@ -178,7 +178,8 @@ if st.session_state["page"] == "Booking":
         if car_bookings:
             st.write("booked dates")
             for booking in car_bookings:
-                st.caption(f"{booking['start_date']} to {booking['end_date']}")
+                paid_status = "paid" if booking["is_paid"] else "unpaid"
+                st.caption(f"{booking['start_date']} to {booking['end_date']}  {paid_status}")
         else:
             st.caption("no bookings yet for this car")
 
@@ -244,12 +245,12 @@ if st.session_state["page"] == "Rental History":
     first, second, third = st.columns(3)
     first.metric("total bookings", len(history))
     second.metric("unpaid bookings", unpaid_count)
-    third.metric("total value", f"${total_spent}")
+    third.metric("total value", f"${total_spent:.2f}")
 
     # shows balances
     balance_left, balance_right = st.columns(2)
-    balance_left.metric("renter balance", f"${st.session_state['renter_balance']}")
-    balance_right.metric("owner balance", f"${st.session_state['owner_balance']}")
+    balance_left.metric("renter balance", f"${renter_balance:.2f}")
+    balance_right.metric("owner balance", f"${owner_balance:.2f}")
 
     if not history:
         st.info("no bookings yet")
@@ -265,34 +266,46 @@ if st.session_state["page"] == "Rental History":
 
 
         # booking details
-        # only expand the most recently clicked booking for details. Otherwise keep them all collapsed
         with st.expander(f"booking {booking['id']}  {booking['year']} {booking['make']} {booking['model']}", expanded=expanded):
             st.write(f"location  {booking['location']}")
             st.write(f"dates  {booking['start_date']} to {booking['end_date']}")
             st.write(f"days  {total_days}")
-            st.write(f"total  ${booking['total_price']}")
+            st.write(f"total  ${booking['total_price']:.2f}")
             st.write(f"status  {paid_status}")
 
-            # payment button. Only show if booking is unpaid
+            # payment button
             if not booking["is_paid"]:
                 if st.button("pay now", key=f"pay_{booking['id']}"):
-                    if st.session_state["renter_balance"] < booking["total_price"]:
-                        st.error("not enough balance")
+                    success, message, amount = process_payment(booking["id"])
+                    if success:
+                        st.session_state["payment_notice"] = f"{message}  ${amount:.2f}"
+                        st.session_state["selected_booking_id"] = booking["id"]
+                        st.rerun()
                     else:
-                        success, message, amount = process_payment(booking["id"])
-                        if success:
-                            # update balances in session state
-                            st.session_state["renter_balance"] -= amount
-                            st.session_state["owner_balance"] += amount
-                            st.session_state["payment_notice"] = message
-                            st.session_state["selected_booking_id"] = booking["id"]
-                            st.rerun()
-                        else:
-                            st.error(message)
+                        st.error(message)
             if st.button("view car", key=f"history_car_{booking['id']}"):
                 st.session_state["selected_car_id"] = booking["car_id"]
                 st.session_state["page"] = "Booking"
                 st.rerun()
+
+    # payment records
+    st.subheader("payment records")
+    payments = get_payments()
+    if not payments:
+        st.info("no payments yet")
+
+    # payment rows
+    for payment in payments:
+        payment_left, payment_right = st.columns([3, 1])
+        payment_left.caption(
+            f"payment {payment['id']}  booking {payment['booking_id']}  "
+            f"${payment['amount']:.2f}  {payment['status']}"
+        )
+
+        # view booking from payment record
+        if payment_right.button("view booking", key=f"payment_booking_{payment['id']}"):
+            st.session_state["selected_booking_id"] = payment["booking_id"]
+            st.rerun()
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
