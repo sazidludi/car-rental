@@ -4,18 +4,18 @@ import sqlite3
 
 DB_PATH = Path(__file__).resolve().parent / "driveshare.db"
 
-# helper for db connections
+# db connection
 def get_connection():
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     return connection
 
-# starts db and makes table if needed
+# database setup
 def init_db():
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
-        # tables
+        # cars table
         """
         CREATE TABLE IF NOT EXISTS cars (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,7 @@ def init_db():
     connection.close()
 
 
-# saves car listings
+# save listing
 def save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description):
     connection = get_connection()
     cursor = connection.cursor()
@@ -75,7 +75,7 @@ def save_car(make, model, year, mileage, location, daily_price, start_date, end_
     connection.commit()
     connection.close()
 
-# gets lsitings
+# get listings
 def get_cars():
     connection = get_connection()
     cursor = connection.cursor()
@@ -84,7 +84,7 @@ def get_cars():
     connection.close()
     return cars
 
-# updates listing with new info from edit 
+# update listing
 def update_car(car_id, make, model, year, mileage, location, daily_price, start_date, end_date, description):
     connection = get_connection()
     cursor = connection.cursor()
@@ -126,7 +126,7 @@ def has_booking_overlap(car_id, start_date, end_date):
     connection.close()
     return booking is not None
 
-
+# save booking by renter 
 def save_booking(car_id, owner_id, start_date, end_date, total_price):
     connection = get_connection()
     cursor = connection.cursor()
@@ -148,7 +148,7 @@ def save_booking(car_id, owner_id, start_date, end_date, total_price):
     connection.close()
     return booking_id
 
-
+# get bookings for car
 def get_bookings_for_car(car_id):
     connection = get_connection()
     cursor = connection.cursor()
@@ -174,7 +174,7 @@ def get_bookings():
     connection.close()
     return bookings
 
-# gets booking history and details
+# booking history
 def get_booking_history():
     connection = get_connection()
     cursor = connection.cursor()

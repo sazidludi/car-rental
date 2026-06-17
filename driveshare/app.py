@@ -5,7 +5,7 @@ import streamlit as st
 
 import driveshare.database as database
 
-database = reload(database) # should stop needing to restarting everytime
+database = reload(database)
 
 from driveshare.database import (
     get_booking_history,
@@ -19,15 +19,15 @@ from driveshare.database import (
 )
 
 
-st.set_page_config(page_title="DriveShare")
+st.set_page_config(page_title="DriveShare", layout="wide")
 init_db()
 
-# starts page at home
+# session state
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 if "selected_car_id" not in st.session_state:
     st.session_state["selected_car_id"] = None
-if "booking_notice" not in st.session_state: # booking confirmation notice
+if "booking_notice" not in st.session_state:
     st.session_state["booking_notice"] = ""
 if "selected_trip_dates" not in st.session_state: 
     st.session_state["selected_trip_dates"] = (date.today(), date.today() + timedelta(days=2))
@@ -36,45 +36,54 @@ if "selected_booking_id" not in st.session_state:
 
 # sidebar
 pages = ["Home", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
-st.session_state["page"] = st.sidebar.radio("pages", pages)
+st.sidebar.title("DriveShare")
+st.sidebar.caption("car sharing dashboard")
+current_page = st.session_state["page"]
+if current_page not in pages:
+    current_page = "Home"
+st.session_state["page"] = st.sidebar.radio("navigation", pages, index=pages.index(current_page))
 
 # main
 st.title("DriveShare")
 st.caption("peer to peer car rental")
 
-# content
+# page data
 cars = get_cars()
+booking_history = get_booking_history()
 
+# home dashboard
 if st.session_state["page"] == "Home":
-    st.subheader("welcome")
-    st.write("DriveShare helps owners list cars and renters book them")
-
-    
-    # metrics for renters and cars and locations
+    st.subheader("dashboard")
+    total_locations = len({car["location"] for car in cars})
+    unpaid_count = len([booking for booking in booking_history if not booking["is_paid"]])
     first, second, third = st.columns(3)
-    first.metric("cars listed", "12")
-    second.metric("active renters", "8")
-    third.metric("cities", "3")
-    st.info("Use the sidebar to explore search owner tools and messages")
+    first.metric("cars listed", len(cars))
+    second.metric("bookings", len(booking_history))
+    third.metric("unpaid", unpaid_count)
 
+    st.divider()
+    if not cars:
+        st.info("add a listing from the owner dashboard")
+    else:
+        st.write(f"available locations  {total_locations}")
+
+# search page
 if st.session_state["page"] == "Search Cars":
     st.subheader("search cars")
 
-    # search
-    left, right = st.columns(2)
-   
-   # filters in saerch
-    location_filter = left.text_input("location")
-    make_filter = left.text_input("make")
-    model_filter = right.text_input("model")
-    trip_dates = right.date_input("trip dates", value=st.session_state["selected_trip_dates"])
-    max_price = st.slider("max daily price", 20, 500, 100)
+    with st.expander("filters", expanded=True):
+        left, right = st.columns(2)
+        location_filter = left.text_input("location")
+        make_filter = left.text_input("make")
+        model_filter = right.text_input("model")
+        trip_dates = right.date_input("trip dates", value=st.session_state["selected_trip_dates"])
+        max_price = st.slider("max daily price", 20, 500, 100)
 
-    # saves trip dates to use in bookig
+    # save trip dates
     if len(trip_dates) == 2:
         st.session_state["selected_trip_dates"] = trip_dates
 
-    # filters and validation
+    # search filters
     results = []
     for car in cars:
         if location_filter and location_filter.lower() not in car["location"].lower():
@@ -89,6 +98,7 @@ if st.session_state["page"] == "Search Cars":
         if car["daily_price"] > max_price:
             continue
 
+            # availability check
         if len(trip_dates) == 2:
             trip_start = trip_dates[0]
             trip_end = trip_dates[1]
@@ -96,39 +106,36 @@ if st.session_state["page"] == "Search Cars":
             available_end = date.fromisoformat(car["availability_end"])
             if trip_start < available_start or trip_end > available_end:
                 continue
-            # checks for overlapping bookings
+            # overlap check
             if has_booking_overlap(car["id"], trip_start, trip_end):
                 continue
 
         results.append(car)
 
-    st.subheader("results")
     st.metric("matches", len(results))
 
     if not results:
         st.info("no cars match these filters")
 
-    # displays results
+    # results
     for car in results:
-        with st.container():
-            st.write(f"{car['year']} {car['make']} {car['model']}")
-            st.write(f"{car['location']}  ${car['daily_price']} per day")
+        with st.expander(f"{car['year']} {car['make']} {car['model']}  ${car['daily_price']}/day"):
+            left, right = st.columns([2, 1])
+            left.write(car["description"])
+            right.write(car["location"])
             st.caption(f"available  {car['availability_start']} to {car['availability_end']}")
-            st.write(car["description"])
-            # booking button
             if st.button("book this car", key=f"book_{car['id']}"):
                 st.session_state["selected_car_id"] = car["id"]
                 if len(trip_dates) == 2:
                     st.session_state["selected_trip_dates"] = trip_dates
                 st.session_state["page"] = "Booking"
                 st.rerun()
-            st.divider()
 
 # booking page
 if st.session_state["page"] == "Booking":
     st.subheader("booking")
 
-    # booking confirmation notice
+    # booking notice
     if st.session_state["booking_notice"]:
         st.success(st.session_state["booking_notice"])
         st.session_state["booking_notice"] = ""
@@ -139,27 +146,28 @@ if st.session_state["page"] == "Booking":
             selected_car = car
             break
 
+
     if selected_car is None:
         st.info("choose a car from search results first")
     else:
         st.write(f"{selected_car['year']} {selected_car['make']} {selected_car['model']}")
         st.write(f"{selected_car['location']}  ${selected_car['daily_price']} per day")
        
-       # existing books and availability for car
+        # car availability
         available_start = date.fromisoformat(selected_car["availability_start"])
         available_end = date.fromisoformat(selected_car["availability_end"])
         saved_trip_dates = st.session_state["selected_trip_dates"]
         car_bookings = get_bookings_for_car(selected_car["id"])
 
-        # defaults to a date
+        # default dates
         default_dates = (available_start, min(available_end, available_start + timedelta(days=1)))
         if len(saved_trip_dates) == 2:
             if saved_trip_dates[0] >= available_start and saved_trip_dates[1] <= available_end:
                 default_dates = saved_trip_dates
-        # shows listing availability
+        # listing dates
         st.caption(f"listing availability  {selected_car['availability_start']} to {selected_car['availability_end']}")
 
-        # existing bookings for this car
+        # booked dates
         if car_bookings:
             st.write("booked dates")
             for booking in car_bookings:
@@ -178,14 +186,14 @@ if st.session_state["page"] == "Booking":
             )
             confirm_booking = st.form_submit_button("confirm booking")
 
-        # booking validation and saving
+        # save booking
         if len(booking_dates) == 2:
             st.session_state["selected_trip_dates"] = booking_dates
             total_days = (booking_dates[1] - booking_dates[0]).days + 1
             total_price = total_days * selected_car["daily_price"]
             st.metric("estimated total", f"${total_price}")
 
-            # booking validation
+            # booking checks
             if confirm_booking:
                 if total_days <= 0:
                     st.error("choose a valid date range")
@@ -210,17 +218,19 @@ if st.session_state["page"] == "Booking":
 
 
 
-# owner dashboard for hisotry  and managing
+# rental history
 if st.session_state["page"] == "Rental History":
     st.subheader("rental history")
     if st.session_state["booking_notice"]:
         st.success(st.session_state["booking_notice"])
         st.session_state["booking_notice"] = ""
 
+    # booking summary in history
     history = get_booking_history()
     unpaid_count = len([booking for booking in history if not booking["is_paid"]])
     total_spent = sum(booking["total_price"] for booking in history)
 
+    # metrics for booking
     first, second, third = st.columns(3)
     first.metric("total bookings", len(history))
     second.metric("unpaid bookings", unpaid_count)
@@ -230,7 +240,7 @@ if st.session_state["page"] == "Rental History":
         st.info("no bookings yet")
 
 
-    # booking history with details and link to car listing
+    # history rows
     for booking in history:
         paid_status = "paid" if booking["is_paid"] else "unpaid"
         start = date.fromisoformat(booking["start_date"])
@@ -252,90 +262,98 @@ if st.session_state["page"] == "Rental History":
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
-   
-   
-   
+
     if "owner_notice" in st.session_state:
         st.success(st.session_state.pop("owner_notice"))
 
-    # creates form
-    with st.form("create_listing_form"):
-        left, right = st.columns(2)
-        make = left.text_input("make")
-        model = right.text_input("model")
-        year = left.number_input("year", min_value=2000, max_value=2026, value=2020)
-        daily_price = right.number_input("daily price", min_value=20, max_value=300, value=65)
-        mileage = left.number_input("mileage", min_value=0, value=25000)
-        location = st.text_input("pickup location")
-        availability = st.date_input("availability", value=(date.today(), date.today() + timedelta(days=7)))
-        description = st.text_area("description")
-        save_listing = st.form_submit_button("save listing")
+    
+    create_tab, listings_tab, edit_tab = st.tabs(["create listing", "your listings", "edit listing"])
 
-    if save_listing:
-        if not make or not model or not location or not description:
-            st.error("fill in all listing fields")
-        elif len(availability) != 2:
-            st.error("choose start and end dates")
-        else:
-            save_car(make, model, year, mileage, location, daily_price, availability[0], availability[1], description)
-            st.session_state["owner_notice"] = "listing saved"
-            st.rerun()
+    # create listing
+    with create_tab:
+        with st.form("create_listing_form"):
+            left, right = st.columns(2)
+            make = left.text_input("make")
+            model = right.text_input("model")
+            year = left.number_input("year", min_value=2000, max_value=2026, value=2020)
+            daily_price = right.number_input("daily price", min_value=20, max_value=300, value=65)
+            mileage = left.number_input("mileage", min_value=0, value=25000)
+            location = st.text_input("pickup location")
+            availability = st.date_input("availability", value=(date.today(), date.today() + timedelta(days=7)))
+            description = st.text_area("description")
+            save_listing = st.form_submit_button("save listing")
 
-    st.subheader("your listings")
-    # metrics
-    st.metric("total listings", len(cars))
-    if not cars:
-        st.info("no listings yet")
-
-    for car in cars:
-        with st.expander(f"{car['year']} {car['make']} {car['model']}"):
-            st.write(f"price per day  ${car['daily_price']}")
-            st.write(f"mileage  {car['mileage']}")
-            st.write(f"location  {car['location']}")
-            st.write(f"available  {car['availability_start']} to {car['availability_end']}")
-            st.write(car["description"])
-
-    if cars:
-        st.subheader("edit listing")
-        car_labels = {f"{car['id']}  {car['year']} {car['make']} {car['model']}": car for car in cars}
-        selected_label = st.selectbox("choose listing", list(car_labels.keys()))
-        selected_car = car_labels[selected_label]
-        edit_start = date.fromisoformat(selected_car["availability_start"])
-        edit_end = date.fromisoformat(selected_car["availability_end"])
-
-       # edit from for listing infor and updates
-        with st.form("edit_listing_form"):
-            edit_make = st.text_input("edit make", value=selected_car["make"])
-            edit_model = st.text_input("edit model", value=selected_car["model"])
-            edit_year = st.number_input("edit year", min_value=2000, max_value=2026, value=selected_car["year"])
-            edit_mileage = st.number_input("edit mileage", min_value=0, value=selected_car["mileage"])
-            edit_price = st.number_input("edit daily price", min_value=20, max_value=300, value=int(selected_car["daily_price"]))
-            edit_location = st.text_input("edit location", value=selected_car["location"])
-            edit_dates = st.date_input("edit availability", value=(edit_start, edit_end))
-            edit_description = st.text_area("edit description", value=selected_car["description"])
-            update_listing = st.form_submit_button("update listing")
-        
-        # update, also validates
-        if update_listing:
-            if not edit_make or not edit_model or not edit_location or not edit_description:
+        # save listing
+        if save_listing:
+            if not make or not model or not location or not description:
                 st.error("fill in all listing fields")
-            elif len(edit_dates) != 2:
+            elif len(availability) != 2:
                 st.error("choose start and end dates")
             else:
-                update_car(
-                    selected_car["id"],
-                    edit_make,
-                    edit_model,
-                    edit_year,
-                    edit_mileage,
-                    edit_location,
-                    edit_price,
-                    edit_dates[0],
-                    edit_dates[1],
-                    edit_description,
-                )
-                st.session_state["owner_notice"] = "listing updated"
+                save_car(make, model, year, mileage, location, daily_price, availability[0], availability[1], description)
+                st.session_state["owner_notice"] = "listing saved"
                 st.rerun()
+
+    # listings overview
+    with listings_tab:
+        st.metric("total listings", len(cars))
+        if not cars:
+            st.info("no listings yet")
+
+        for car in cars:
+            with st.expander(f"{car['year']} {car['make']} {car['model']}"):
+                left, right = st.columns(2)
+                left.write(f"price per day  ${car['daily_price']}")
+                left.write(f"mileage  {car['mileage']}")
+                right.write(f"location  {car['location']}")
+                right.write(f"available  {car['availability_start']} to {car['availability_end']}")
+                st.write(car["description"])
+
+     # edit listing
+    with edit_tab:
+        if not cars:
+            st.info("create a listing before editing")
+        else:
+            car_labels = {f"{car['id']}  {car['year']} {car['make']} {car['model']}": car for car in cars}
+            selected_label = st.selectbox("choose listing", list(car_labels.keys()))
+            selected_car = car_labels[selected_label]
+            edit_start = date.fromisoformat(selected_car["availability_start"])
+            edit_end = date.fromisoformat(selected_car["availability_end"])
+
+            # edit form
+            with st.form("edit_listing_form"):
+                edit_make = st.text_input("edit make", value=selected_car["make"])
+                edit_model = st.text_input("edit model", value=selected_car["model"])
+                edit_year = st.number_input("edit year", min_value=2000, max_value=2026, value=selected_car["year"])
+                edit_mileage = st.number_input("edit mileage", min_value=0, value=selected_car["mileage"])
+                edit_price = st.number_input("edit daily price", min_value=20, max_value=300, value=int(selected_car["daily_price"]))
+                edit_location = st.text_input("edit location", value=selected_car["location"])
+                edit_dates = st.date_input("edit availability", value=(edit_start, edit_end))
+                edit_description = st.text_area("edit description", value=selected_car["description"])
+                update_listing = st.form_submit_button("update listing")
+
+
+            # update listing
+            if update_listing:
+                if not edit_make or not edit_model or not edit_location or not edit_description:
+                    st.error("fill in all listing fields")
+                elif len(edit_dates) != 2:
+                    st.error("choose start and end dates")
+                else:
+                    update_car(
+                        selected_car["id"],
+                        edit_make,
+                        edit_model,
+                        edit_year,
+                        edit_mileage,
+                        edit_location,
+                        edit_price,
+                        edit_dates[0],
+                        edit_dates[1],
+                        edit_description,
+                    )
+                    st.session_state["owner_notice"] = "listing updated"
+                    st.rerun()
 
 if st.session_state["page"] == "Messages":
     st.subheader("messages")
