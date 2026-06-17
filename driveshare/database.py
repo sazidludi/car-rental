@@ -34,3 +34,28 @@ def init_db():
     )
     connection.commit()
     connection.close()
+
+
+# saves car listings
+def save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO cars (
+            make,
+            model,
+            year,
+            mileage,
+            location,
+            daily_price,
+            availability_start,
+            availability_end,
+            description
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (make, model, year, mileage, location, daily_price, str(start_date), str(end_date), description),
+    )
+    connection.commit()
+    connection.close()

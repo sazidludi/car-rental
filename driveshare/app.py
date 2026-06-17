@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from database import init_db
+from database import init_db, save_car
 
 
 st.set_page_config(page_title="DriveShare")
@@ -49,13 +49,18 @@ if st.session_state["page"] == "Owner Dashboard":
    
     # listing form
     left, right = st.columns(2)
-    left.text_input("make")
-    right.text_input("model")
-    left.number_input("year", min_value=2000, max_value=2026, value=2020)
-    right.number_input("daily price", min_value=20, max_value=300, value=65)
-    st.text_input("pickup location")
-    st.text_area("description")
-    st.button("save listing")
+    # allows inputs for car details 
+    make = left.text_input("make")
+    model = right.text_input("model")
+    year = left.number_input("year", min_value=2000, max_value=2026, value=2020)
+    daily_price = right.number_input("daily price", min_value=20, max_value=300, value=65)
+    mileage = left.number_input("mileage", min_value=0, value=25000)
+    location = st.text_input("pickup location")
+    start_date, end_date = st.date_input("availability", value=(date.today(), date.today() + timedelta(days=7)))
+    description = st.text_area("description")
+    if st.button("save listing"):
+        save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description)
+        st.success("listing saved")
 
 if st.session_state["page"] == "Messages":
     st.subheader("messages")
