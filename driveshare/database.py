@@ -173,3 +173,24 @@ def get_bookings():
     bookings = cursor.fetchall()
     connection.close()
     return bookings
+
+# gets booking history and details
+def get_booking_history():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT
+            bookings.*,
+            cars.make,
+            cars.model,
+            cars.year,
+            cars.location
+        FROM bookings
+        JOIN cars ON cars.id = bookings.car_id
+        ORDER BY bookings.id DESC
+        """
+    )
+    bookings = cursor.fetchall()
+    connection.close()
+    return bookings

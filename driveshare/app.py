@@ -3,7 +3,7 @@ from datetime import date, timedelta
 import streamlit as st
 
 from driveshare.database import (
-    get_bookings,
+    get_booking_history,
     get_bookings_for_car,
     get_cars,
     has_booking_overlap,
@@ -26,9 +26,11 @@ if "booking_notice" not in st.session_state: # booking confirmation notice
     st.session_state["booking_notice"] = ""
 if "selected_trip_dates" not in st.session_state: 
     st.session_state["selected_trip_dates"] = (date.today(), date.today() + timedelta(days=2))
+if "selected_booking_id" not in st.session_state:
+    st.session_state["selected_booking_id"] = None
 
 # sidebar
-pages = ["Home", "Search Cars", "Booking", "Owner Dashboard", "Messages"]
+pages = ["Home", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
 st.session_state["page"] = st.sidebar.radio("pages", pages)
 
 # main
@@ -195,19 +197,53 @@ if st.session_state["page"] == "Booking":
                         total_price,
                     )
                     st.session_state["booking_notice"] = f"booking confirmed  id {booking_id}"
+                    st.session_state["selected_booking_id"] = booking_id
+                    st.session_state["page"] = "Rental History"
                     st.rerun()
         else:
             st.info("choose start and end dates")
 
-        # shows recent bookings for this car
-        st.subheader("recent bookings")
-        recent_bookings = get_bookings()
-        selected_bookings = [booking for booking in recent_bookings if booking["car_id"] == selected_car["id"]]
-        if not selected_bookings:
-            st.info("no saved bookings yet")
-        for booking in selected_bookings:
-            st.write(f"booking {booking['id']}  {booking['start_date']} to {booking['end_date']}")
-            st.caption(f"total  ${booking['total_price']}  paid  {booking['is_paid']}")
+
+
+# owner dashboard for hisotry  and managing
+if st.session_state["page"] == "Rental History":
+    st.subheader("rental history")
+    if st.session_state["booking_notice"]:
+        st.success(st.session_state["booking_notice"])
+        st.session_state["booking_notice"] = ""
+
+    history = get_booking_history()
+    unpaid_count = len([booking for booking in history if not booking["is_paid"]])
+    total_spent = sum(booking["total_price"] for booking in history)
+
+    first, second, third = st.columns(3)
+    first.metric("total bookings", len(history))
+    second.metric("unpaid bookings", unpaid_count)
+    third.metric("total value", f"${total_spent}")
+
+    if not history:
+        st.info("no bookings yet")
+
+
+    # booking history with details and link to car listing
+    for booking in history:
+        paid_status = "paid" if booking["is_paid"] else "unpaid"
+        start = date.fromisoformat(booking["start_date"])
+        end = date.fromisoformat(booking["end_date"])
+        total_days = (end - start).days + 1
+        expanded = booking["id"] == st.session_state["selected_booking_id"]
+
+    
+        with st.expander(f"booking {booking['id']}  {booking['year']} {booking['make']} {booking['model']}", expanded=expanded):
+            st.write(f"location  {booking['location']}")
+            st.write(f"dates  {booking['start_date']} to {booking['end_date']}")
+            st.write(f"days  {total_days}")
+            st.write(f"total  ${booking['total_price']}")
+            st.write(f"status  {paid_status}")
+            if st.button("view car", key=f"history_car_{booking['id']}"):
+                st.session_state["selected_car_id"] = booking["car_id"]
+                st.session_state["page"] = "Booking"
+                st.rerun()
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
