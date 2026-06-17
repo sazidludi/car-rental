@@ -38,13 +38,54 @@ if st.session_state["page"] == "Home":
 if st.session_state["page"] == "Search Cars":
     st.subheader("search cars")
 
-    # search 
+    # search
     left, right = st.columns(2)
-    left.text_input("location")
-    right.text_input("make or model")
-    st.date_input("trip dates", value=(date.today(), date.today() + timedelta(days=2)))
-    st.slider("max daily price", 20, 200, 100)
-    st.success("search results will appear here")
+   
+   # filters in saerch
+    location_filter = left.text_input("location")
+    make_filter = left.text_input("make")
+    model_filter = right.text_input("model")
+    trip_dates = right.date_input("trip dates", value=(date.today(), date.today() + timedelta(days=2)))
+    max_price = st.slider("max daily price", 20, 500, 100)
+
+        # filters and validation
+    results = []
+    for car in cars:
+        if location_filter and location_filter.lower() not in car["location"].lower():
+            continue
+
+        if make_filter and make_filter.lower() not in car["make"].lower():
+            continue
+
+        if model_filter and model_filter.lower() not in car["model"].lower():
+            continue
+
+        if car["daily_price"] > max_price:
+            continue
+
+        if len(trip_dates) == 2:
+            trip_start = trip_dates[0]
+            trip_end = trip_dates[1]
+            available_start = date.fromisoformat(car["availability_start"])
+            available_end = date.fromisoformat(car["availability_end"])
+            if trip_start < available_start or trip_end > available_end:
+                continue
+
+        results.append(car)
+
+    st.subheader("results")
+    st.metric("matches", len(results))
+
+    if not results:
+        st.info("no cars match these filters")
+
+    for car in results:
+        with st.container():
+            st.write(f"{car['year']} {car['make']} {car['model']}")
+            st.write(f"{car['location']}  ${car['daily_price']} per day")
+            st.caption(f"available  {car['availability_start']} to {car['availability_end']}")
+            st.write(car["description"])
+            st.divider()
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
