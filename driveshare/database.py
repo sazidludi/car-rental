@@ -15,6 +15,17 @@ def init_db():
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
+        # users table
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL,
+            balance REAL NOT NULL
+        )
+        """
+    )
+    cursor.execute(
         # cars table
         """
         CREATE TABLE IF NOT EXISTS cars (
@@ -47,6 +58,35 @@ def init_db():
         )
         """
     )
+    # payments table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL,
+            renter_id INTEGER NOT NULL DEFAULT 1,
+            owner_id INTEGER NOT NULL DEFAULT 1,
+            amount REAL NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    # seed users
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO users (id, email, role, balance)
+        VALUES (1, 'owner@example.com', 'owner', 0)
+        """
+    )
+    # seed renter with balance for testing
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO users (id, email, role, balance)
+        VALUES (2, 'renter@example.com', 'renter', 1000)
+        """
+    )
+    cursor.execute("UPDATE bookings SET renter_id = 2 WHERE renter_id = 1 AND owner_id = 1")
     connection.commit()
     connection.close()
 
@@ -126,7 +166,7 @@ def has_booking_overlap(car_id, start_date, end_date):
     connection.close()
     return booking is not None
 
-# save booking by renter 
+# save booking
 def save_booking(car_id, owner_id, start_date, end_date, total_price):
     connection = get_connection()
     cursor = connection.cursor()
@@ -134,14 +174,15 @@ def save_booking(car_id, owner_id, start_date, end_date, total_price):
         """
         INSERT INTO bookings (
             car_id,
+            renter_id,
             owner_id,
             start_date,
             end_date,
             total_price
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (car_id, owner_id, str(start_date), str(end_date), total_price),
+        (car_id, 2, owner_id, str(start_date), str(end_date), total_price),
     )
     connection.commit()
     booking_id = cursor.lastrowid
@@ -194,3 +235,96 @@ def get_booking_history():
     bookings = cursor.fetchall()
     connection.close()
     return bookings
+
+
+# user balance
+def get_user_balance(user_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    connection.close()
+    if user is None:
+        return 0
+    return user["balance"]
+
+
+# payment history
+def get_payments():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM payments ORDER BY id DESC")
+    payments = cursor.fetchall()
+    connection.close()
+    return payments
+
+
+# process payment
+def process_payment(booking_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+    booking = cursor.fetchone()
+
+    if booking is None:
+        connection.close()
+        return False, "booking not found", 0
+
+    if booking["is_paid"]:
+        connection.close()
+        return False, "booking already paid", booking["total_price"]
+
+    cursor.execute("SELECT * FROM users WHERE id = ?", (booking["renter_id"],))
+    renter = cursor.fetchone()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (booking["owner_id"],))
+    owner = cursor.fetchone()
+
+    # validate users
+    if renter is None or owner is None:
+        connection.close()
+        return False, "payment users missing", booking["total_price"]
+
+    # check renter balance
+    if renter["balance"] < booking["total_price"]:
+        connection.close()
+        return False, "not enough balance", booking["total_price"]
+
+    # create payment record
+    cursor.execute(
+        """
+        INSERT INTO payments (
+            booking_id,
+            renter_id,
+            owner_id,
+            amount,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            booking["id"],
+            booking["renter_id"],
+            booking["owner_id"],
+            booking["total_price"],
+            "paid",
+        ),
+    )
+    # update balances and booking status
+    cursor.execute(
+        "UPDATE users SET balance = balance - ? WHERE id = ?",
+        (booking["total_price"], booking["renter_id"]),
+    )
+
+    # transfer payment to owner
+    cursor.execute(
+        "UPDATE users SET balance = balance + ? WHERE id = ?",
+        (booking["total_price"], booking["owner_id"]),
+    )
+
+    # mark booking as paid
+    cursor.execute("UPDATE bookings SET is_paid = 1 WHERE id = ?", (booking_id,))
+    connection.commit()
+    connection.close()
+
+    # return success
+    return True, "payment complete", booking["total_price"]
