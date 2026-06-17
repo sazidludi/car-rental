@@ -20,6 +20,14 @@ if st.session_state["page"] == "Home":
     st.subheader("welcome")
     st.write("DriveShare helps owners list cars and renters book them")
 
+    
+    # metrics for renters and cars and locations
+    first, second, third = st.columns(3)
+    first.metric("cars listed", "12")
+    second.metric("active renters", "8")
+    third.metric("cities", "3")
+    st.info("Use the sidebar to explore search owner tools and messages")
+
 if st.session_state["page"] == "Search Cars":
     st.subheader("search cars")
     st.write("search filters will go here")
