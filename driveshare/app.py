@@ -21,6 +21,7 @@ from driveshare.pages.messages import render_messages
 from driveshare.pages.notif import render_notif
 from driveshare.pages.owner import render_owner
 from driveshare.pages.search import render_search
+from driveshare.pages.watchlist import render_watchlist
 
 
 st.set_page_config(page_title="DriveShare", layout="wide")
@@ -43,7 +44,7 @@ if "notification_view" not in st.session_state:
     st.session_state["notification_view"] = "renter"
 
 # sidebar
-pages = ["Home", "Notifications", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
+pages = ["Home", "Notifications", "Search Cars", "Watchlist", "Booking", "Rental History", "Owner Dashboard", "Messages"]
 st.sidebar.title("DriveShare")
 st.sidebar.caption("car sharing dashboard")
 current_page = st.session_state["page"]
@@ -71,6 +72,9 @@ if st.session_state["page"] == "Notifications":
 
 if st.session_state["page"] == "Search Cars":
     render_search(cars)
+
+if st.session_state["page"] == "Watchlist":
+    render_watchlist(cars)
 
 if st.session_state["page"] == "Booking":
     render_booking(cars)

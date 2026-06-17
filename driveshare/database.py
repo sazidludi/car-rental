@@ -86,6 +86,21 @@ def init_db():
         )
         """
     )
+    # watchlist table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 2,
+            car_id INTEGER NOT NULL,
+            target_price REAL NOT NULL,
+            desired_start TEXT NOT NULL,
+            desired_end TEXT NOT NULL,
+            is_notified INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     # seed users
     cursor.execute(
         """
@@ -126,8 +141,10 @@ def save_car(make, model, year, mileage, location, daily_price, start_date, end_
         """,
         (make, model, year, mileage, location, daily_price, str(start_date), str(end_date), description),
     )
+    car_id = cursor.lastrowid
     connection.commit()
     connection.close()
+    notify_watch_matches(car_id)
 
 # get listings
 def get_cars():
@@ -160,6 +177,7 @@ def update_car(car_id, make, model, year, mileage, location, daily_price, start_
     )
     connection.commit()
     connection.close()
+    notify_watch_matches(car_id)
 
 
 def has_booking_overlap(car_id, start_date, end_date):
@@ -307,6 +325,142 @@ def add_notification(user_id, title, message, booking_id=None):
         """,
         (user_id, title, message, booking_id),
     )
+    connection.commit()
+    connection.close()
+
+
+# save watch
+def save_watch(car_id, target_price, desired_start, desired_end):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO watchlist (
+            user_id,
+            car_id,
+            target_price,
+            desired_start,
+            desired_end
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (2, car_id, target_price, str(desired_start), str(desired_end)),
+    )
+    watch_id = cursor.lastrowid
+    connection.commit()
+    connection.close()
+    notify_watch_matches(car_id)
+    return watch_id
+
+
+# get watches
+def get_watchlist(user_id=2):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT
+            watchlist.id AS watch_id,
+            watchlist.user_id,
+            watchlist.car_id,
+            watchlist.target_price,
+            watchlist.desired_start,
+            watchlist.desired_end,
+            watchlist.is_notified,
+            watchlist.created_at,
+            cars.make,
+            cars.model,
+            cars.year,
+            cars.location,
+            cars.daily_price,
+            cars.availability_start,
+            cars.availability_end
+        FROM watchlist
+        JOIN cars ON cars.id = watchlist.car_id
+        WHERE watchlist.user_id = ?
+        ORDER BY watchlist.id DESC
+        """,
+        (user_id,),
+    )
+    watches = cursor.fetchall()
+    connection.close()
+    return watches
+
+
+# remove watch
+def delete_watch(watch_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM watchlist WHERE id = ?", (watch_id,))
+    connection.commit()
+    connection.close()
+
+
+# notify watchers
+def notify_watch_matches(car_id=None):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    query = """
+        SELECT
+            watchlist.*,
+            cars.make,
+            cars.model,
+            cars.year,
+            cars.daily_price,
+            cars.availability_start,
+            cars.availability_end
+        FROM watchlist
+        JOIN cars ON cars.id = watchlist.car_id
+        WHERE watchlist.is_notified = 0
+    """
+    params = []
+    if car_id is not None:
+        query += " AND watchlist.car_id = ?"
+        params.append(car_id)
+
+    cursor.execute(query, params)
+    watches = cursor.fetchall()
+
+    for watch in watches:
+        price_matches = watch["daily_price"] <= watch["target_price"]
+        dates_match = (
+            watch["availability_start"] <= watch["desired_start"]
+            and watch["availability_end"] >= watch["desired_end"]
+        )
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM bookings
+            WHERE car_id = ?
+            AND start_date <= ?
+            AND end_date >= ?
+            LIMIT 1
+            """,
+            (watch["car_id"], watch["desired_end"], watch["desired_start"]),
+        )
+        has_overlap = cursor.fetchone() is not None
+
+        if price_matches and dates_match and not has_overlap:
+            car_name = f"{watch['year']} {watch['make']} {watch['model']}"
+            cursor.execute(
+                """
+                INSERT INTO notifications (user_id, title, message, booking_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    watch["user_id"],
+                    "watched car available",
+                    f"{car_name} matches your watch target",
+                    None,
+                ),
+            )
+            cursor.execute(
+                "UPDATE watchlist SET is_notified = 1 WHERE id = ?",
+                (watch["id"],),
+            )
+
     connection.commit()
     connection.close()
 
