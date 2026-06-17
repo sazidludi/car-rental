@@ -32,6 +32,21 @@ def init_db():
         )
         """
     )
+    # bookings table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            car_id INTEGER NOT NULL,
+            renter_id INTEGER NOT NULL DEFAULT 1,
+            owner_id INTEGER NOT NULL DEFAULT 1,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            total_price REAL NOT NULL,
+            is_paid INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
     connection.commit()
     connection.close()
 
@@ -91,3 +106,70 @@ def update_car(car_id, make, model, year, mileage, location, daily_price, start_
     )
     connection.commit()
     connection.close()
+
+
+def has_booking_overlap(car_id, start_date, end_date):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT id
+        FROM bookings
+        WHERE car_id = ?
+        AND start_date <= ?
+        AND end_date >= ?
+        LIMIT 1
+        """,
+        (car_id, str(end_date), str(start_date)),
+    )
+    booking = cursor.fetchone()
+    connection.close()
+    return booking is not None
+
+
+def save_booking(car_id, owner_id, start_date, end_date, total_price):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO bookings (
+            car_id,
+            owner_id,
+            start_date,
+            end_date,
+            total_price
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (car_id, owner_id, str(start_date), str(end_date), total_price),
+    )
+    connection.commit()
+    booking_id = cursor.lastrowid
+    connection.close()
+    return booking_id
+
+
+def get_bookings_for_car(car_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT *
+        FROM bookings
+        WHERE car_id = ?
+        ORDER BY start_date
+        """,
+        (car_id,),
+    )
+    bookings = cursor.fetchall()
+    connection.close()
+    return bookings
+
+
+def get_bookings():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM bookings ORDER BY id DESC")
+    bookings = cursor.fetchall()
+    connection.close()
+    return bookings

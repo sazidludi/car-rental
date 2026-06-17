@@ -2,7 +2,16 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from driveshare.database import get_cars, init_db, save_car, update_car
+from driveshare.database import (
+    get_bookings,
+    get_bookings_for_car,
+    get_cars,
+    has_booking_overlap,
+    init_db,
+    save_booking,
+    save_car,
+    update_car,
+)
 
 
 st.set_page_config(page_title="DriveShare")
@@ -13,6 +22,10 @@ if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 if "selected_car_id" not in st.session_state:
     st.session_state["selected_car_id"] = None
+if "booking_notice" not in st.session_state: # booking confirmation notice
+    st.session_state["booking_notice"] = ""
+if "selected_trip_dates" not in st.session_state: 
+    st.session_state["selected_trip_dates"] = (date.today(), date.today() + timedelta(days=2))
 
 # sidebar
 pages = ["Home", "Search Cars", "Booking", "Owner Dashboard", "Messages"]
@@ -47,10 +60,14 @@ if st.session_state["page"] == "Search Cars":
     location_filter = left.text_input("location")
     make_filter = left.text_input("make")
     model_filter = right.text_input("model")
-    trip_dates = right.date_input("trip dates", value=(date.today(), date.today() + timedelta(days=2)))
+    trip_dates = right.date_input("trip dates", value=st.session_state["selected_trip_dates"])
     max_price = st.slider("max daily price", 20, 500, 100)
 
-        # filters and validation
+    # saves trip dates to use in bookig
+    if len(trip_dates) == 2:
+        st.session_state["selected_trip_dates"] = trip_dates
+
+    # filters and validation
     results = []
     for car in cars:
         if location_filter and location_filter.lower() not in car["location"].lower():
@@ -72,6 +89,9 @@ if st.session_state["page"] == "Search Cars":
             available_end = date.fromisoformat(car["availability_end"])
             if trip_start < available_start or trip_end > available_end:
                 continue
+            # checks for overlapping bookings
+            if has_booking_overlap(car["id"], trip_start, trip_end):
+                continue
 
         results.append(car)
 
@@ -91,6 +111,8 @@ if st.session_state["page"] == "Search Cars":
             # booking button
             if st.button("book this car", key=f"book_{car['id']}"):
                 st.session_state["selected_car_id"] = car["id"]
+                if len(trip_dates) == 2:
+                    st.session_state["selected_trip_dates"] = trip_dates
                 st.session_state["page"] = "Booking"
                 st.rerun()
             st.divider()
@@ -99,33 +121,93 @@ if st.session_state["page"] == "Search Cars":
 if st.session_state["page"] == "Booking":
     st.subheader("booking")
 
-    # find car from search
+    # booking confirmation notice
+    if st.session_state["booking_notice"]:
+        st.success(st.session_state["booking_notice"])
+        st.session_state["booking_notice"] = ""
+
     selected_car = None
     for car in cars:
         if car["id"] == st.session_state["selected_car_id"]:
             selected_car = car
             break
-    # validates car and booking options
+
     if selected_car is None:
         st.info("choose a car from search results first")
     else:
-        # display car info and booking
         st.write(f"{selected_car['year']} {selected_car['make']} {selected_car['model']}")
         st.write(f"{selected_car['location']}  ${selected_car['daily_price']} per day")
-        booking_dates = st.date_input(
-            "booking dates",
-            value=(
-                date.fromisoformat(selected_car["availability_start"]),
-                date.fromisoformat(selected_car["availability_start"]) + timedelta(days=1),
-            ),
-        )
+       
+       # existing books and availability for car
+        available_start = date.fromisoformat(selected_car["availability_start"])
+        available_end = date.fromisoformat(selected_car["availability_end"])
+        saved_trip_dates = st.session_state["selected_trip_dates"]
+        car_bookings = get_bookings_for_car(selected_car["id"])
 
-        # price calculations
+        # defaults to a date
+        default_dates = (available_start, min(available_end, available_start + timedelta(days=1)))
+        if len(saved_trip_dates) == 2:
+            if saved_trip_dates[0] >= available_start and saved_trip_dates[1] <= available_end:
+                default_dates = saved_trip_dates
+        # shows listing availability
+        st.caption(f"listing availability  {selected_car['availability_start']} to {selected_car['availability_end']}")
+
+        # existing bookings for this car
+        if car_bookings:
+            st.write("booked dates")
+            for booking in car_bookings:
+                st.caption(f"{booking['start_date']} to {booking['end_date']}")
+        else:
+            st.caption("no bookings yet for this car")
+
+        # booking form
+        with st.form("booking_form"):
+            booking_dates = st.date_input(
+                "booking dates",
+                value=default_dates,
+                min_value=available_start,
+                max_value=available_end,
+                key=f"booking_dates_{selected_car['id']}",
+            )
+            confirm_booking = st.form_submit_button("confirm booking")
+
+        # booking validation and saving
         if len(booking_dates) == 2:
+            st.session_state["selected_trip_dates"] = booking_dates
             total_days = (booking_dates[1] - booking_dates[0]).days + 1
             total_price = total_days * selected_car["daily_price"]
             st.metric("estimated total", f"${total_price}")
-        st.button("confirm booking")
+
+            # booking validation
+            if confirm_booking:
+                if total_days <= 0:
+                    st.error("choose a valid date range")
+                elif booking_dates[0] < available_start or booking_dates[1] > available_end:
+                    st.error("dates must stay inside car availability")
+                elif has_booking_overlap(selected_car["id"], booking_dates[0], booking_dates[1]):
+                    st.error("these dates are already booked")
+                else:
+                    booking_id = save_booking(
+                        selected_car["id"],
+                        selected_car["owner_id"],
+                        booking_dates[0],
+                        booking_dates[1],
+                        total_price,
+                    )
+                    st.session_state["booking_notice"] = f"booking confirmed  id {booking_id}"
+                    st.rerun()
+        else:
+            st.info("choose start and end dates")
+
+        # shows recent bookings for this car
+        st.subheader("recent bookings")
+        recent_bookings = get_bookings()
+        selected_bookings = [booking for booking in recent_bookings if booking["car_id"] == selected_car["id"]]
+        if not selected_bookings:
+            st.info("no saved bookings yet")
+        for booking in selected_bookings:
+            st.write(f"booking {booking['id']}  {booking['start_date']} to {booking['end_date']}")
+            st.caption(f"total  ${booking['total_price']}  paid  {booking['is_paid']}")
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
