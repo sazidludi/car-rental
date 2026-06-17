@@ -3,15 +3,19 @@ import streamlit as st
 
 st.set_page_config(page_title="DriveShare")
 
+# starts page at home
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
+# sidebar
 pages = ["Home", "Search Cars", "Owner Dashboard", "Messages"]
 st.session_state["page"] = st.sidebar.radio("pages", pages)
 
+# main
 st.title("DriveShare")
 st.caption("peer to peer car rental")
 
+# content
 if st.session_state["page"] == "Home":
     st.subheader("welcome")
     st.write("DriveShare helps owners list cars and renters book them")
