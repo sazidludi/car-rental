@@ -59,3 +59,12 @@ def save_car(make, model, year, mileage, location, daily_price, start_date, end_
     )
     connection.commit()
     connection.close()
+
+# gets lsitings
+def get_cars():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM cars ORDER BY id DESC")
+    cars = cursor.fetchall()
+    connection.close()
+    return cars
