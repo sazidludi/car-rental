@@ -56,4 +56,23 @@ if st.session_state["page"] == "Owner Dashboard":
 
 if st.session_state["page"] == "Messages":
     st.subheader("messages")
-    st.write("owner renter chat will go here")
+
+    # contacts and chats
+    contacts, chat = st.columns([1, 2])
+
+    with contacts:
+        st.write("conversations")
+        selected_chat = st.radio(
+            "chat list",
+            ["Alex owner", "Alux renter", "Alox renter"],
+            label_visibility="collapsed",
+        )
+
+    with chat:
+        st.write(f"chat with {selected_chat}")
+        st.caption("linked to a booking or car listing")
+        st.info("messages will appear here")
+        st.text_area("message", placeholder="type your message here")
+        first, second = st.columns(2)
+        first.button("send message")
+        second.button("attach booking note")
