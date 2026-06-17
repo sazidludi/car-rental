@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from database import get_cars, init_db, save_car, update_car
+from driveshare.database import get_cars, init_db, save_car, update_car
 
 
 st.set_page_config(page_title="DriveShare")
