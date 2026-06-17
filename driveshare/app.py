@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from database import get_cars, init_db, save_car
+from database import get_cars, init_db, save_car, update_car
 
 
 st.set_page_config(page_title="DriveShare")
@@ -21,6 +21,8 @@ st.title("DriveShare")
 st.caption("peer to peer car rental")
 
 # content
+cars = get_cars()
+
 if st.session_state["page"] == "Home":
     st.subheader("welcome")
     st.write("DriveShare helps owners list cars and renters book them")
@@ -69,9 +71,48 @@ if st.session_state["page"] == "Owner Dashboard":
 
 # shows listings for owner
     st.subheader("your listings")
-    for car in get_cars():
+    for car in cars:
         st.write(f"{car['year']} {car['make']} {car['model']}  ${car['daily_price']}/day")
         st.caption(f"{car['location']}  {car['availability_start']} to {car['availability_end']}")
+
+
+# edit listings
+    if cars:
+        st.subheader("edit listing")
+        car_labels = {f"{car['id']}  {car['year']} {car['make']} {car['model']}": car for car in cars}
+        selected_label = st.selectbox("choose listing", list(car_labels.keys()))
+        selected_car = car_labels[selected_label]
+        # prefill
+        edit_start = date.fromisoformat(selected_car["availability_start"])
+        edit_end = date.fromisoformat(selected_car["availability_end"])
+
+        # allows inputs
+        edit_make = st.text_input("edit make", value=selected_car["make"])
+        edit_model = st.text_input("edit model", value=selected_car["model"])
+        edit_year = st.number_input("edit year", min_value=2000, max_value=2026, value=selected_car["year"])
+        edit_mileage = st.number_input("edit mileage", min_value=0, value=selected_car["mileage"])
+        edit_price = st.number_input("edit daily price", min_value=20, max_value=300, value=int(selected_car["daily_price"]))
+        edit_location = st.text_input("edit location", value=selected_car["location"])
+        edit_dates = st.date_input("edit availability", value=(edit_start, edit_end))
+        edit_description = st.text_area("edit description", value=selected_car["description"])
+
+
+        # updates listing
+        if st.button("update listing"):
+            update_car(
+                selected_car["id"],
+                edit_make,
+                edit_model,
+                edit_year,
+                edit_mileage,
+                edit_location,
+                edit_price,
+                edit_dates[0],
+                edit_dates[1],
+                edit_description,
+            )
+            st.success("listing updated")
+            st.rerun()
 
 if st.session_state["page"] == "Messages":
     st.subheader("messages")

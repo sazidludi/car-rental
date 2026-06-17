@@ -68,3 +68,26 @@ def get_cars():
     cars = cursor.fetchall()
     connection.close()
     return cars
+
+# updates listing with new info from edit 
+def update_car(car_id, make, model, year, mileage, location, daily_price, start_date, end_date, description):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        UPDATE cars
+        SET make = ?,
+            model = ?,
+            year = ?,
+            mileage = ?,
+            location = ?,
+            daily_price = ?,
+            availability_start = ?,
+            availability_end = ?,
+            description = ?
+        WHERE id = ?
+        """,
+        (make, model, year, mileage, location, daily_price, str(start_date), str(end_date), description, car_id),
+    )
+    connection.commit()
+    connection.close()
