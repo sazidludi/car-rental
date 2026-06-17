@@ -1,6 +1,11 @@
 from datetime import date, timedelta
+from importlib import reload
 
 import streamlit as st
+
+import driveshare.database as database
+
+database = reload(database) # should stop needing to restarting everytime
 
 from driveshare.database import (
     get_booking_history,
