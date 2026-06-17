@@ -43,7 +43,16 @@ if st.session_state["page"] == "Search Cars":
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
-    st.write("listing tools will go here")
+   
+    # listing form
+    left, right = st.columns(2)
+    left.text_input("make")
+    right.text_input("model")
+    left.number_input("year", min_value=2000, max_value=2026, value=2020)
+    right.number_input("daily price", min_value=20, max_value=300, value=65)
+    st.text_input("pickup location")
+    st.text_area("description")
+    st.button("save listing")
 
 if st.session_state["page"] == "Messages":
     st.subheader("messages")
