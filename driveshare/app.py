@@ -11,9 +11,11 @@ init_db()
 # starts page at home
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
+if "selected_car_id" not in st.session_state:
+    st.session_state["selected_car_id"] = None
 
 # sidebar
-pages = ["Home", "Search Cars", "Owner Dashboard", "Messages"]
+pages = ["Home", "Search Cars", "Booking", "Owner Dashboard", "Messages"]
 st.session_state["page"] = st.sidebar.radio("pages", pages)
 
 # main
@@ -79,13 +81,51 @@ if st.session_state["page"] == "Search Cars":
     if not results:
         st.info("no cars match these filters")
 
+    # displays results
     for car in results:
         with st.container():
             st.write(f"{car['year']} {car['make']} {car['model']}")
             st.write(f"{car['location']}  ${car['daily_price']} per day")
             st.caption(f"available  {car['availability_start']} to {car['availability_end']}")
             st.write(car["description"])
+            # booking button
+            if st.button("book this car", key=f"book_{car['id']}"):
+                st.session_state["selected_car_id"] = car["id"]
+                st.session_state["page"] = "Booking"
+                st.rerun()
             st.divider()
+
+# booking page
+if st.session_state["page"] == "Booking":
+    st.subheader("booking")
+
+    # find car from search
+    selected_car = None
+    for car in cars:
+        if car["id"] == st.session_state["selected_car_id"]:
+            selected_car = car
+            break
+    # validates car and booking options
+    if selected_car is None:
+        st.info("choose a car from search results first")
+    else:
+        # display car info and booking
+        st.write(f"{selected_car['year']} {selected_car['make']} {selected_car['model']}")
+        st.write(f"{selected_car['location']}  ${selected_car['daily_price']} per day")
+        booking_dates = st.date_input(
+            "booking dates",
+            value=(
+                date.fromisoformat(selected_car["availability_start"]),
+                date.fromisoformat(selected_car["availability_start"]) + timedelta(days=1),
+            ),
+        )
+
+        # price calculations
+        if len(booking_dates) == 2:
+            total_days = (booking_dates[1] - booking_dates[0]).days + 1
+            total_price = total_days * selected_car["daily_price"]
+            st.metric("estimated total", f"${total_price}")
+        st.button("confirm booking")
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
