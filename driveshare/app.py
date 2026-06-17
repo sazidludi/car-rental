@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import streamlit as st
 
 
@@ -30,7 +32,14 @@ if st.session_state["page"] == "Home":
 
 if st.session_state["page"] == "Search Cars":
     st.subheader("search cars")
-    st.write("search filters will go here")
+
+    # search 
+    left, right = st.columns(2)
+    left.text_input("location")
+    right.text_input("make or model")
+    st.date_input("trip dates", value=(date.today(), date.today() + timedelta(days=2)))
+    st.slider("max daily price", 20, 200, 100)
+    st.success("search results will appear here")
 
 if st.session_state["page"] == "Owner Dashboard":
     st.subheader("owner dashboard")
