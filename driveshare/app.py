@@ -12,6 +12,7 @@ from driveshare.database import (
     get_bookings_for_car,
     get_cars,
     get_payments,
+    get_unread_count,
     get_user_balance,
     has_booking_overlap,
     init_db,
@@ -20,6 +21,7 @@ from driveshare.database import (
     save_car,
     update_car,
 )
+from driveshare.pages.notif import render_notif
 
 
 st.set_page_config(page_title="DriveShare", layout="wide")
@@ -38,9 +40,11 @@ if "selected_booking_id" not in st.session_state:
     st.session_state["selected_booking_id"] = None
 if "payment_notice" not in st.session_state:
     st.session_state["payment_notice"] = ""
+if "notification_view" not in st.session_state:
+    st.session_state["notification_view"] = "renter"
 
 # sidebar
-pages = ["Home", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
+pages = ["Home", "Notifications", "Search Cars", "Booking", "Rental History", "Owner Dashboard", "Messages"]
 st.sidebar.title("DriveShare")
 st.sidebar.caption("car sharing dashboard")
 current_page = st.session_state["page"]
@@ -57,22 +61,28 @@ cars = get_cars()
 booking_history = get_booking_history()
 renter_balance = get_user_balance(2)
 owner_balance = get_user_balance(1)
+unread_total = get_unread_count()
 
 # home dashboard
 if st.session_state["page"] == "Home":
     st.subheader("dashboard")
     total_locations = len({car["location"] for car in cars})
     unpaid_count = len([booking for booking in booking_history if not booking["is_paid"]])
-    first, second, third = st.columns(3)
+    first, second, third, fourth = st.columns(4)
     first.metric("cars listed", len(cars))
     second.metric("bookings", len(booking_history))
     third.metric("unpaid", unpaid_count)
+    fourth.metric("unread", unread_total)
 
     st.divider()
     if not cars:
         st.info("add a listing from the owner dashboard")
     else:
         st.write(f"available locations  {total_locations}")
+
+# notifications page
+if st.session_state["page"] == "Notifications":
+    render_notif()
 
 # search page
 if st.session_state["page"] == "Search Cars":

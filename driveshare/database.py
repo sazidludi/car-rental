@@ -72,6 +72,20 @@ def init_db():
         )
         """
     )
+    # notifications table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            booking_id INTEGER,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     # seed users
     cursor.execute(
         """
@@ -184,8 +198,26 @@ def save_booking(car_id, owner_id, start_date, end_date, total_price):
         """,
         (car_id, 2, owner_id, str(start_date), str(end_date), total_price),
     )
-    connection.commit()
     booking_id = cursor.lastrowid
+
+    # renter notice
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, booking_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        (2, "booking confirmed", f"booking {booking_id} is reserved", booking_id),
+    )
+
+    # owner notice
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, booking_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        (owner_id, "new booking", f"booking {booking_id} was created", booking_id),
+    )
+    connection.commit()
     connection.close()
     return booking_id
 
@@ -259,6 +291,67 @@ def get_payments():
     return payments
 
 
+# add notification
+def add_notification(user_id, title, message, booking_id=None):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO notifications (
+            user_id,
+            title,
+            message,
+            booking_id
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, title, message, booking_id),
+    )
+    connection.commit()
+    connection.close()
+
+
+# get notifications
+def get_notifications(user_id=None):
+    connection = get_connection()
+    cursor = connection.cursor()
+    if user_id is None:
+        cursor.execute("SELECT * FROM notifications ORDER BY id DESC")
+    else:
+        cursor.execute(
+            "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC",
+            (user_id,),
+        )
+    notifications = cursor.fetchall()
+    connection.close()
+    return notifications
+
+
+# unread count
+def get_unread_count(user_id=None):
+    connection = get_connection()
+    cursor = connection.cursor()
+    if user_id is None:
+        cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE is_read = 0")
+    else:
+        cursor.execute(
+            "SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0",
+            (user_id,),
+        )
+    row = cursor.fetchone()
+    connection.close()
+    return row["count"]
+
+
+# mark read
+def mark_notification_read(notification_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
+    connection.commit()
+    connection.close()
+
+
 # process payment
 def process_payment(booking_id):
     connection = get_connection()
@@ -323,6 +416,34 @@ def process_payment(booking_id):
 
     # mark booking as paid
     cursor.execute("UPDATE bookings SET is_paid = 1 WHERE id = ?", (booking_id,))
+
+    # renter notice
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, booking_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            booking["renter_id"],
+            "payment sent",
+            f"payment for booking {booking_id} is complete",
+            booking_id,
+        ),
+    )
+
+    # owner notice
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, booking_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            booking["owner_id"],
+            "payment received",
+            f"payment for booking {booking_id} was received",
+            booking_id,
+        ),
+    )
     connection.commit()
     connection.close()
 
