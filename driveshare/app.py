@@ -59,8 +59,12 @@ if st.session_state["page"] == "Owner Dashboard":
     start_date, end_date = st.date_input("availability", value=(date.today(), date.today() + timedelta(days=7)))
     description = st.text_area("description")
     if st.button("save listing"):
-        save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description)
-        st.success("listing saved")
+        # input checks
+        if not make or not model or not location or not description:
+            st.error("fill in all listing fields")
+        else:
+            save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description)
+            st.success("listing saved")
 
 
 # shows listings for owner
