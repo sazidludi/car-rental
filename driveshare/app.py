@@ -2,8 +2,11 @@ from datetime import date, timedelta
 
 import streamlit as st
 
+from database import init_db
+
 
 st.set_page_config(page_title="DriveShare")
+init_db()
 
 # starts page at home
 if "page" not in st.session_state:
@@ -62,16 +65,14 @@ if st.session_state["page"] == "Messages":
 
     with contacts:
         st.write("conversations")
-        selected_chat = st.radio(
-            "chat list",
-            ["Alex owner", "Alux renter", "Alox renter"],
-            label_visibility="collapsed",
-        )
+        st.info("conversations will appear here")
+        st.text_input("participant")
+        st.button("start chat")
 
     with chat:
-        st.write(f"chat with {selected_chat}")
+        st.write("current chat")
         st.caption("linked to a booking or car listing")
-        st.info("messages will appear here")
+        st.info("select a conversation or start a new one")
         st.text_area("message", placeholder="type your message here")
         first, second = st.columns(2)
         first.button("send message")
