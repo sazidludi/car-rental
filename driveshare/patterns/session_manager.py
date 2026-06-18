@@ -11,6 +11,8 @@ class SessionManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+
+    # intialize with default vals
     def setup(self, default_page="Home"):
         defaults = {
             "page": default_page,

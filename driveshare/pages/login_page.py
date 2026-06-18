@@ -4,9 +4,7 @@ from driveshare.database import verify_user
 
 
 def render_login(session):
-    st.subheader("login")
-    st.caption("demo owner  owner@example.com / owner123")
-    st.caption("demo renter  renter@example.com / renter123")
+    st.subheader("Login")
 
     if "login_notice" in st.session_state:
         st.success(st.session_state.pop("login_notice"))

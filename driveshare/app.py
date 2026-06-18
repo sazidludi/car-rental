@@ -56,10 +56,9 @@ session.setup()
 # auth pages
 if not session.is_logged_in():
     st.title("DriveShare")
-    st.caption("peer to peer car rental")
 
     auth_pages = ["Login", "Register"]
-    st.sidebar.write("account")
+    st.sidebar.write("Account")
 
     # auth buttons
     for auth_page in auth_pages:
