@@ -299,6 +299,36 @@ def verify_user(email, password):
     return user
 
 
+def get_recovery_user(email):
+    user = get_user_by_email(email)
+    if user is None:
+        return None
+
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "question_one": user["security_question_one"],
+        "answer_one_hash": user["security_answer_one_hash"],
+        "question_two": user["security_question_two"],
+        "answer_two_hash": user["security_answer_two_hash"],
+        "question_three": user["security_question_three"],
+        "answer_three_hash": user["security_answer_three_hash"],
+    }
+
+
+def update_password(user_id, new_password):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        (hash_password(new_password), user_id),
+    )
+    updated = cursor.rowcount == 1
+    connection.commit()
+    connection.close()
+    return updated
+
+
 # save listing
 def save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description, owner_id=1):
     connection = get_connection()

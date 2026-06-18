@@ -8,6 +8,9 @@ def render_login(session):
     st.caption("demo owner  owner@example.com / owner123")
     st.caption("demo renter  renter@example.com / renter123")
 
+    if "login_notice" in st.session_state:
+        st.success(st.session_state.pop("login_notice"))
+
     # login form
     with st.form("login_form"):
         email = st.text_input("email")
@@ -22,6 +25,13 @@ def render_login(session):
             session.login(user)
             st.rerun()
 
-    if st.button("create account"):
+    left, right = st.columns(2)
+
+    # account buttons
+    if left.button("create account"):
         st.session_state["auth_page"] = "Register"
+        st.rerun()
+
+    if right.button("Forgot Password"):
+        st.session_state["auth_page"] = "Recover"
         st.rerun()

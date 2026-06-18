@@ -14,6 +14,7 @@ from driveshare.database import (
     init_db,
 )
 from driveshare.pages.login_page import render_login
+from driveshare.pages.recovery_page import render_recovery
 from driveshare.pages.register_page import render_register
 from driveshare.pages.booking import render_booking
 from driveshare.pages.history import render_history
@@ -39,16 +40,22 @@ if not session.is_logged_in():
     st.caption("peer to peer car rental")
 
     auth_pages = ["Login", "Register"]
-    st.session_state["auth_page"] = st.sidebar.radio(
-        "account",
-        auth_pages,
-        index=auth_pages.index(st.session_state["auth_page"]),
-    )
+    if st.session_state["auth_page"] in auth_pages:
+        st.session_state["auth_page"] = st.sidebar.radio(
+            "account",
+            auth_pages,
+            index=auth_pages.index(st.session_state["auth_page"]),
+        )
+    else:
+        st.sidebar.write("account")
+        st.sidebar.caption("password recovery")
 
     if st.session_state["auth_page"] == "Login":
         render_login(session)
     if st.session_state["auth_page"] == "Register":
         render_register(session)
+    if st.session_state["auth_page"] == "Recover":
+        render_recovery()
 
     st.stop()
 
