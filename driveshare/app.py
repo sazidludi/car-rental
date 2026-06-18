@@ -31,6 +31,24 @@ from driveshare.patterns.ui_mediator import UIMediator
 st.set_page_config(page_title="DriveShare", layout="wide")
 init_db()
 
+# page style
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] button {
+        justify-content: flex-start;
+    }
+    .block-container {
+        padding-top: 3rem;
+    }
+    div[data-testid="stForm"] {
+        border-radius: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # session manager
 session = SessionManager()
 session.setup()
@@ -41,14 +59,15 @@ if not session.is_logged_in():
     st.caption("peer to peer car rental")
 
     auth_pages = ["Login", "Register"]
-    if st.session_state["auth_page"] in auth_pages:
-        st.session_state["auth_page"] = st.sidebar.radio(
-            "account",
-            auth_pages,
-            index=auth_pages.index(st.session_state["auth_page"]),
-        )
-    else:
-        st.sidebar.write("account")
+    st.sidebar.write("account")
+
+    # auth buttons
+    for auth_page in auth_pages:
+        button_type = "primary" if st.session_state["auth_page"] == auth_page else "secondary"
+        if st.sidebar.button(auth_page, key=f"auth_{auth_page}", type=button_type, use_container_width=True):
+            st.session_state["auth_page"] = auth_page
+
+    if st.session_state["auth_page"] == "Recover":
         st.sidebar.caption("password recovery")
 
     if st.session_state["auth_page"] == "Login":
@@ -87,7 +106,7 @@ unread_total = get_unread_count(user_id)
 
 # page routes
 if mediator.is_page("Home"):
-    render_home(cars, booking_history, unread_total)
+    render_home(cars, booking_history, unread_total, current_user)
 
 if mediator.is_page("Notifications"):
     render_notif(current_user)
