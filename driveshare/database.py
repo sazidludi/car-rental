@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import sqlite3
 
 
@@ -21,10 +22,18 @@ def init_db():
             id INTEGER PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             role TEXT NOT NULL,
-            balance REAL NOT NULL
+            balance REAL NOT NULL,
+            password_hash TEXT,
+            security_question_one TEXT,
+            security_answer_one_hash TEXT,
+            security_question_two TEXT,
+            security_answer_two_hash TEXT,
+            security_question_three TEXT,
+            security_answer_three_hash TEXT
         )
         """
     )
+    ensure_user_columns(cursor)
     cursor.execute(
         # cars table
         """
@@ -104,29 +113,200 @@ def init_db():
     # seed users
     cursor.execute(
         """
-        INSERT OR IGNORE INTO users (id, email, role, balance)
-        VALUES (1, 'owner@example.com', 'owner', 0)
-        """
+        INSERT OR IGNORE INTO users (
+            id,
+            email,
+            role,
+            balance,
+            password_hash,
+            security_question_one,
+            security_answer_one_hash,
+            security_question_two,
+            security_answer_two_hash,
+            security_question_three,
+            security_answer_three_hash
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        demo_user_values(1, "owner@example.com", "owner", 0, "owner123"),
     )
     # seed renter with balance for testing
     cursor.execute(
         """
-        INSERT OR IGNORE INTO users (id, email, role, balance)
-        VALUES (2, 'renter@example.com', 'renter', 1000)
-        """
+        INSERT OR IGNORE INTO users (
+            id,
+            email,
+            role,
+            balance,
+            password_hash,
+            security_question_one,
+            security_answer_one_hash,
+            security_question_two,
+            security_answer_two_hash,
+            security_question_three,
+            security_answer_three_hash
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        demo_user_values(2, "renter@example.com", "renter", 1000, "renter123"),
     )
+    backfill_demo_user(cursor, 1, "owner123")
+    backfill_demo_user(cursor, 2, "renter123")
     cursor.execute("UPDATE bookings SET renter_id = 2 WHERE renter_id = 1 AND owner_id = 1")
     connection.commit()
     connection.close()
 
 
+def ensure_user_columns(cursor):
+    cursor.execute("PRAGMA table_info(users)")
+    columns = [row["name"] for row in cursor.fetchall()]
+    needed_columns = {
+        "password_hash": "TEXT",
+        "security_question_one": "TEXT",
+        "security_answer_one_hash": "TEXT",
+        "security_question_two": "TEXT",
+        "security_answer_two_hash": "TEXT",
+        "security_question_three": "TEXT",
+        "security_answer_three_hash": "TEXT",
+    }
+
+    # small migration
+    for column_name, column_type in needed_columns.items():
+        if column_name not in columns:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}")
+
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def hash_answer(answer):
+    clean_answer = answer.strip().lower()
+    return hashlib.sha256(clean_answer.encode()).hexdigest()
+
+
+def demo_user_values(user_id, email, role, balance, password):
+    return (
+        user_id,
+        email,
+        role,
+        balance,
+        hash_password(password),
+        "favorite color",
+        hash_answer("blue"),
+        "first pet",
+        hash_answer("spot"),
+        "favorite food",
+        hash_answer("pizza"),
+    )
+
+
+def backfill_demo_user(cursor, user_id, password):
+    cursor.execute(
+        """
+        UPDATE users
+        SET password_hash = COALESCE(password_hash, ?),
+            security_question_one = COALESCE(security_question_one, ?),
+            security_answer_one_hash = COALESCE(security_answer_one_hash, ?),
+            security_question_two = COALESCE(security_question_two, ?),
+            security_answer_two_hash = COALESCE(security_answer_two_hash, ?),
+            security_question_three = COALESCE(security_question_three, ?),
+            security_answer_three_hash = COALESCE(security_answer_three_hash, ?)
+        WHERE id = ?
+        """,
+        (
+            hash_password(password),
+            "favorite color",
+            hash_answer("blue"),
+            "first pet",
+            hash_answer("spot"),
+            "favorite food",
+            hash_answer("pizza"),
+            user_id,
+        ),
+    )
+
+
+def create_user(email, password, role, questions, answers):
+    connection = get_connection()
+    cursor = connection.cursor()
+    balance = 1000 if role == "renter" else 0
+
+    try:
+        cursor.execute(
+            """
+            INSERT INTO users (
+                email,
+                role,
+                balance,
+                password_hash,
+                security_question_one,
+                security_answer_one_hash,
+                security_question_two,
+                security_answer_two_hash,
+                security_question_three,
+                security_answer_three_hash
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                email.strip().lower(),
+                role,
+                balance,
+                hash_password(password),
+                questions[0],
+                hash_answer(answers[0]),
+                questions[1],
+                hash_answer(answers[1]),
+                questions[2],
+                hash_answer(answers[2]),
+            ),
+        )
+        user_id = cursor.lastrowid
+        connection.commit()
+    except sqlite3.IntegrityError:
+        connection.close()
+        return None, "email already registered"
+
+    connection.close()
+    return get_user(user_id), "account created"
+
+
+def get_user(user_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    connection.close()
+    return user
+
+
+def get_user_by_email(email):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),))
+    user = cursor.fetchone()
+    connection.close()
+    return user
+
+
+def verify_user(email, password):
+    user = get_user_by_email(email)
+    if user is None:
+        return None
+    if user["password_hash"] != hash_password(password):
+        return None
+    return user
+
+
 # save listing
-def save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description):
+def save_car(make, model, year, mileage, location, daily_price, start_date, end_date, description, owner_id=1):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
         """
         INSERT INTO cars (
+            owner_id,
             make,
             model,
             year,
@@ -137,9 +317,9 @@ def save_car(make, model, year, mileage, location, daily_price, start_date, end_
             availability_end,
             description
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (make, model, year, mileage, location, daily_price, str(start_date), str(end_date), description),
+        (owner_id, make, model, year, mileage, location, daily_price, str(start_date), str(end_date), description),
     )
     car_id = cursor.lastrowid
     connection.commit()
@@ -199,7 +379,7 @@ def has_booking_overlap(car_id, start_date, end_date):
     return booking is not None
 
 # save booking
-def save_booking(car_id, owner_id, start_date, end_date, total_price):
+def save_booking(car_id, owner_id, start_date, end_date, total_price, renter_id=2):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
@@ -214,7 +394,7 @@ def save_booking(car_id, owner_id, start_date, end_date, total_price):
         )
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (car_id, 2, owner_id, str(start_date), str(end_date), total_price),
+        (car_id, renter_id, owner_id, str(start_date), str(end_date), total_price),
     )
     booking_id = cursor.lastrowid
 
@@ -224,7 +404,7 @@ def save_booking(car_id, owner_id, start_date, end_date, total_price):
         INSERT INTO notifications (user_id, title, message, booking_id)
         VALUES (?, ?, ?, ?)
         """,
-        (2, "booking confirmed", f"booking {booking_id} is reserved", booking_id),
+        (renter_id, "booking confirmed", f"booking {booking_id} is reserved", booking_id),
     )
 
     # owner notice
@@ -266,11 +446,10 @@ def get_bookings():
     return bookings
 
 # booking history
-def get_booking_history():
+def get_booking_history(user_id=None, role=None):
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute(
-        """
+    query = """
         SELECT
             bookings.*,
             cars.make,
@@ -279,9 +458,18 @@ def get_booking_history():
             cars.location
         FROM bookings
         JOIN cars ON cars.id = bookings.car_id
-        ORDER BY bookings.id DESC
-        """
-    )
+    """
+    params = []
+
+    if user_id is not None and role == "owner":
+        query += " WHERE bookings.owner_id = ?"
+        params.append(user_id)
+    elif user_id is not None:
+        query += " WHERE bookings.renter_id = ?"
+        params.append(user_id)
+
+    query += " ORDER BY bookings.id DESC"
+    cursor.execute(query, params)
     bookings = cursor.fetchall()
     connection.close()
     return bookings
@@ -300,10 +488,21 @@ def get_user_balance(user_id):
 
 
 # payment history
-def get_payments():
+def get_payments(user_id=None, role=None):
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM payments ORDER BY id DESC")
+    query = "SELECT * FROM payments"
+    params = []
+
+    if user_id is not None and role == "owner":
+        query += " WHERE owner_id = ?"
+        params.append(user_id)
+    elif user_id is not None:
+        query += " WHERE renter_id = ?"
+        params.append(user_id)
+
+    query += " ORDER BY id DESC"
+    cursor.execute(query, params)
     payments = cursor.fetchall()
     connection.close()
     return payments
@@ -330,7 +529,7 @@ def add_notification(user_id, title, message, booking_id=None):
 
 
 # save watch
-def save_watch(car_id, target_price, desired_start, desired_end):
+def save_watch(car_id, target_price, desired_start, desired_end, user_id=2):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
@@ -344,7 +543,7 @@ def save_watch(car_id, target_price, desired_start, desired_end):
         )
         VALUES (?, ?, ?, ?, ?)
         """,
-        (2, car_id, target_price, str(desired_start), str(desired_end)),
+        (user_id, car_id, target_price, str(desired_start), str(desired_end)),
     )
     watch_id = cursor.lastrowid
     connection.commit()
@@ -507,7 +706,7 @@ def mark_notification_read(notification_id):
 
 
 # process payment
-def process_payment(booking_id):
+def process_payment(booking_id, renter_id=None):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
@@ -520,6 +719,10 @@ def process_payment(booking_id):
     if booking["is_paid"]:
         connection.close()
         return False, "booking already paid", booking["total_price"]
+
+    if renter_id is not None and booking["renter_id"] != renter_id:
+        connection.close()
+        return False, "this booking belongs to another renter", booking["total_price"]
 
     cursor.execute("SELECT * FROM users WHERE id = ?", (booking["renter_id"],))
     renter = cursor.fetchone()

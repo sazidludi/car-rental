@@ -5,8 +5,15 @@ import streamlit as st
 from driveshare.database import save_car, update_car
 
 
-def render_owner(cars):
+def render_owner(cars, user):
     st.subheader("owner dashboard")
+
+    # only for owners listings
+    if user["role"] != "owner":
+        st.info("only owners can manage listings")
+        return
+
+    cars = [car for car in cars if car["owner_id"] == user["id"]]
 
     if "owner_notice" in st.session_state:
         st.success(st.session_state.pop("owner_notice"))
@@ -33,7 +40,7 @@ def render_owner(cars):
             elif len(availability) != 2:
                 st.error("choose start and end dates")
             else:
-                save_car(make, model, year, mileage, location, daily_price, availability[0], availability[1], description)
+                save_car(make, model, year, mileage, location, daily_price, availability[0], availability[1], description, user["id"])
                 st.session_state["owner_notice"] = "listing saved"
                 st.rerun()
 

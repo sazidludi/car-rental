@@ -3,21 +3,11 @@ import streamlit as st
 from driveshare.database import get_notifications, get_unread_count, mark_notification_read
 
 
-def render_notif():
+def render_notif(user):
     st.subheader("notifications")
 
-    # user filter
-    user_options = {"renter": 2, "owner": 1}
-    selected_user = st.selectbox(
-        "show for",
-        list(user_options.keys()),
-        index=list(user_options.keys()).index(st.session_state["notification_view"]),
-    )
-    
-    st.session_state["notification_view"] = selected_user
-    selected_user_id = user_options[selected_user]
-    notifications = get_notifications(selected_user_id)
-    unread_count = get_unread_count(selected_user_id)
+    notifications = get_notifications(user["id"])
+    unread_count = get_unread_count(user["id"])
 
 
     first, second = st.columns(2)

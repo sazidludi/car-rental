@@ -5,8 +5,13 @@ import streamlit as st
 from driveshare.database import get_bookings_for_car, has_booking_overlap, save_booking
 
 
-def render_booking(cars):
+def render_booking(cars, user):
     st.subheader("booking")
+
+    # only for renters
+    if user["role"] != "renter":
+        st.info("only renters can book cars")
+        return
 
     # booking message
     if st.session_state["booking_notice"]:
@@ -81,6 +86,7 @@ def render_booking(cars):
                 booking_dates[0],
                 booking_dates[1],
                 total_price,
+                user["id"],
             )
             st.session_state["booking_notice"] = f"booking confirmed  id {booking_id}"
             st.session_state["selected_booking_id"] = booking_id

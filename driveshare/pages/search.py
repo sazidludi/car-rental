@@ -5,7 +5,7 @@ import streamlit as st
 from driveshare.database import has_booking_overlap, save_watch
 
 
-def render_search(cars):
+def render_search(cars, user):
     st.subheader("search cars")
 
     with st.expander("filters", expanded=True):
@@ -73,5 +73,5 @@ def render_search(cars):
                 if len(trip_dates) != 2:
                     st.error("choose start and end dates")
                 else:
-                    save_watch(car["id"], max_price, trip_dates[0], trip_dates[1])
+                    save_watch(car["id"], max_price, trip_dates[0], trip_dates[1], user["id"])
                     st.success("car added to watchlist")

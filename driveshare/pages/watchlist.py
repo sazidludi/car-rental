@@ -5,13 +5,13 @@ import streamlit as st
 from driveshare.database import delete_watch, get_watchlist
 
 
-def render_watchlist(cars=None):
+def render_watchlist(cars=None, user=None):
     st.subheader("watchlist")
 
     if "watch_notice" in st.session_state:
         st.success(st.session_state.pop("watch_notice"))
 
-    watches = get_watchlist()
+    watches = get_watchlist(user["id"])
     st.metric("watched cars", len(watches))
 
     if not watches:
