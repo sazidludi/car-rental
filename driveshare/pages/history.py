@@ -2,11 +2,13 @@ from datetime import date
 
 import streamlit as st
 
-from driveshare.database import get_booking_history, get_payments, process_payment
+from driveshare.database import add_balance, get_booking_history, get_payments
+from driveshare.patterns.payment_proxy import PaymentProxy
 
 
 def render_history(user, user_balance):
     st.subheader("rental history")
+    payment_proxy = PaymentProxy(user)
 
     if st.session_state["booking_notice"]:
         st.success(st.session_state["booking_notice"])
@@ -27,6 +29,14 @@ def render_history(user, user_balance):
 
     # balance
     st.metric("your balance", f"${user_balance:.2f}")
+    with st.form("add_balance_form"):
+        amount = st.number_input("add balance", min_value=1, max_value=1000, value=100)
+        add_money = st.form_submit_button("add funds")
+
+    if add_money:
+        new_balance = add_balance(user["id"], amount)
+        st.session_state["payment_notice"] = f"balance updated  ${new_balance:.2f}"
+        st.rerun()
 
     if not history:
         st.info("no bookings yet")
@@ -51,7 +61,7 @@ def render_history(user, user_balance):
             # pay booking
             if user["role"] == "renter" and not booking["is_paid"]:
                 if st.button("pay now", key=f"pay_{booking['id']}"):
-                    success, message, amount = process_payment(booking["id"], user["id"])
+                    success, message, amount = payment_proxy.pay(booking["id"])
                     if success:
                         st.session_state["payment_notice"] = f"{message}  ${amount:.2f}"
                         st.session_state["selected_booking_id"] = booking["id"]

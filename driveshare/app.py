@@ -25,6 +25,7 @@ from driveshare.pages.owner import render_owner
 from driveshare.pages.search import render_search
 from driveshare.pages.watchlist import render_watchlist
 from driveshare.patterns.session_manager import SessionManager
+from driveshare.patterns.ui_mediator import UIMediator
 
 
 st.set_page_config(page_title="DriveShare", layout="wide")
@@ -69,14 +70,8 @@ if user_role == "owner":
 else:
     pages = ["Home", "Notifications", "Search Cars", "Watchlist", "Booking", "Rental History", "Messages"]
 
-st.sidebar.title("DriveShare")
-st.sidebar.caption("car sharing dashboard")
-st.sidebar.caption(f"{current_user['email']}  {user_role}")
-current_page = st.session_state["page"]
-if current_page not in pages:
-    current_page = "Home"
-st.session_state["page"] = st.sidebar.radio("navigation", pages, index=pages.index(current_page))
-if st.sidebar.button("logout"):
+mediator = UIMediator(pages)
+if mediator.render_sidebar(current_user):
     session.logout()
     st.rerun()
 
@@ -91,26 +86,26 @@ user_balance = get_user_balance(user_id)
 unread_total = get_unread_count(user_id)
 
 # page routes
-if st.session_state["page"] == "Home":
+if mediator.is_page("Home"):
     render_home(cars, booking_history, unread_total)
 
-if st.session_state["page"] == "Notifications":
+if mediator.is_page("Notifications"):
     render_notif(current_user)
 
-if st.session_state["page"] == "Search Cars":
+if mediator.is_page("Search Cars"):
     render_search(cars, current_user)
 
-if st.session_state["page"] == "Watchlist":
+if mediator.is_page("Watchlist"):
     render_watchlist(cars, current_user)
 
-if st.session_state["page"] == "Booking":
+if mediator.is_page("Booking"):
     render_booking(cars, current_user)
 
-if st.session_state["page"] == "Rental History":
+if mediator.is_page("Rental History"):
     render_history(current_user, user_balance)
 
-if st.session_state["page"] == "Owner Dashboard":
+if mediator.is_page("Owner Dashboard"):
     render_owner(cars, current_user)
 
-if st.session_state["page"] == "Messages":
-    render_messages()
+if mediator.is_page("Messages"):
+    render_messages(current_user)

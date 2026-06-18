@@ -95,6 +95,18 @@ def init_db():
         )
         """
     )
+    # messages table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     # watchlist table
     cursor.execute(
         """
@@ -356,6 +368,22 @@ def save_car(make, model, year, mileage, location, daily_price, start_date, end_
     connection.close()
     notify_watch_matches(car_id)
 
+
+def save_car_listing(listing):
+    save_car(
+        listing.make,
+        listing.model,
+        listing.year,
+        listing.mileage,
+        listing.location,
+        listing.daily_price,
+        listing.availability_start,
+        listing.availability_end,
+        listing.description,
+        listing.owner_id,
+    )
+
+
 # get listings
 def get_cars():
     connection = get_connection()
@@ -388,6 +416,21 @@ def update_car(car_id, make, model, year, mileage, location, daily_price, start_
     connection.commit()
     connection.close()
     notify_watch_matches(car_id)
+
+
+def add_balance(user_id, amount):
+    if amount <= 0:
+        return get_user_balance(user_id)
+
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE users SET balance = balance + ? WHERE id = ?",
+        (amount, user_id),
+    )
+    connection.commit()
+    connection.close()
+    return get_user_balance(user_id)
 
 
 def has_booking_overlap(car_id, start_date, end_date):
@@ -627,71 +670,10 @@ def delete_watch(watch_id):
 
 # notify watchers
 def notify_watch_matches(car_id=None):
-    connection = get_connection()
-    cursor = connection.cursor()
+    from driveshare.patterns.booking_observer import WatchObserver
 
-    query = """
-        SELECT
-            watchlist.*,
-            cars.make,
-            cars.model,
-            cars.year,
-            cars.daily_price,
-            cars.availability_start,
-            cars.availability_end
-        FROM watchlist
-        JOIN cars ON cars.id = watchlist.car_id
-        WHERE watchlist.is_notified = 0
-    """
-    params = []
-    if car_id is not None:
-        query += " AND watchlist.car_id = ?"
-        params.append(car_id)
-
-    cursor.execute(query, params)
-    watches = cursor.fetchall()
-
-    for watch in watches:
-        price_matches = watch["daily_price"] <= watch["target_price"]
-        dates_match = (
-            watch["availability_start"] <= watch["desired_start"]
-            and watch["availability_end"] >= watch["desired_end"]
-        )
-
-        cursor.execute(
-            """
-            SELECT id
-            FROM bookings
-            WHERE car_id = ?
-            AND start_date <= ?
-            AND end_date >= ?
-            LIMIT 1
-            """,
-            (watch["car_id"], watch["desired_end"], watch["desired_start"]),
-        )
-        has_overlap = cursor.fetchone() is not None
-
-        if price_matches and dates_match and not has_overlap:
-            car_name = f"{watch['year']} {watch['make']} {watch['model']}"
-            cursor.execute(
-                """
-                INSERT INTO notifications (user_id, title, message, booking_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    watch["user_id"],
-                    "watched car available",
-                    f"{car_name} matches your watch target",
-                    None,
-                ),
-            )
-            cursor.execute(
-                "UPDATE watchlist SET is_notified = 1 WHERE id = ?",
-                (watch["id"],),
-            )
-
-    connection.commit()
-    connection.close()
+    observer = WatchObserver()
+    observer.notify(car_id)
 
 
 # get notifications
@@ -731,6 +713,69 @@ def mark_notification_read(notification_id):
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
+    connection.commit()
+    connection.close()
+
+
+def get_message_contacts(user_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT DISTINCT users.id, users.email, users.role
+        FROM users
+        WHERE users.id != ?
+        ORDER BY users.email
+        """,
+        (user_id,),
+    )
+    users = cursor.fetchall()
+    connection.close()
+    return users
+
+
+def get_messages_between(user_id, other_user_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        SELECT
+            messages.*,
+            sender.email AS sender_email
+        FROM messages
+        JOIN users AS sender ON sender.id = messages.sender_id
+        WHERE (sender_id = ? AND receiver_id = ?)
+        OR (sender_id = ? AND receiver_id = ?)
+        ORDER BY messages.id
+        """,
+        (user_id, other_user_id, other_user_id, user_id),
+    )
+    messages = cursor.fetchall()
+    connection.close()
+    return messages
+
+
+def send_message(sender_id, receiver_id, body):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        INSERT INTO messages (
+            sender_id,
+            receiver_id,
+            body
+        )
+        VALUES (?, ?, ?)
+        """,
+        (sender_id, receiver_id, body),
+    )
+    cursor.execute(
+        """
+        INSERT INTO notifications (user_id, title, message, booking_id)
+        VALUES (?, ?, ?, ?)
+        """,
+        (receiver_id, "new message", "you received a new message", None),
+    )
     connection.commit()
     connection.close()
 

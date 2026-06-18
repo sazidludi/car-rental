@@ -2,7 +2,8 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from driveshare.database import save_car, update_car
+from driveshare.database import save_car_listing, update_car
+from driveshare.patterns.car_listing_builder import CarListingBuilder
 
 
 def render_owner(cars, user):
@@ -40,7 +41,16 @@ def render_owner(cars, user):
             elif len(availability) != 2:
                 st.error("choose start and end dates")
             else:
-                save_car(make, model, year, mileage, location, daily_price, availability[0], availability[1], description, user["id"])
+                listing = (
+                    CarListingBuilder()
+                    .with_owner(user["id"])
+                    .with_basic_info(make, model, year)
+                    .with_trip_info(mileage, location, daily_price)
+                    .with_availability(availability[0], availability[1])
+                    .with_description(description)
+                    .build()
+                )
+                save_car_listing(listing)
                 st.session_state["owner_notice"] = "listing saved"
                 st.rerun()
 
